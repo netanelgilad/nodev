@@ -7,6 +7,9 @@
   "repository": "git@github.com:netanelgilad/nodev.git",
   "author": "Netanel Gilad <netanelgilad@gmail.com>",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "case-sensitive-paths-webpack-plugin": "^2.1.2",
     "chalk": "^2.4.1",
