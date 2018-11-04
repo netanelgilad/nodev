@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Node For Development",
   "main": "index.js",
+  "bin": "./bin.js",
   "repository": "git@github.com:netanelgilad/nodev.git",
   "author": "Netanel Gilad <netanelgilad@gmail.com>",
   "license": "MIT",
