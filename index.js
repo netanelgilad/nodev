@@ -5,6 +5,7 @@ module.exports.runCLI = async function runCLI() {
 
   const webpack = require("webpack");
   const stream = require("stream");
+  const inquirer = require("inquirer");
   const formatWebpackMessages = require("react-dev-utils/formatWebpackMessages");
   const child_process = require("child_process");
   const { createServerWebpackConfig } = require("./server.webpack.config");
@@ -19,6 +20,9 @@ module.exports.runCLI = async function runCLI() {
   let serverProcess;
   let serverLogPaused = false;
 
+  let ui = new inquirer.ui.BottomBar();
+  const stdin = process.stdin;
+
   const startServerProcess = () => {
     serverProcess = child_process.fork("./build/index.js", {
       stdio: "pipe",
@@ -32,13 +36,29 @@ module.exports.runCLI = async function runCLI() {
     serverProcess.stdout
       .pipe(serverLogPauser())
       .pipe(serverLogPrefixer())
+      .pipe(ui.log)
       .pipe(process.stdout);
     serverProcess.stderr
       .pipe(serverLogPauser())
       .pipe(serverLogPrefixer())
+      .pipe(ui.log)
       .pipe(process.stderr);
 
     serverProcess.on("disconnect", () => (serverProcess = undefined));
+    serverProcess.on("close", code => {
+      console.log("closed!");
+      ui.updateBottomBar(
+        `${
+          code && code > 0
+            ? chalk.red(`! Exited with code ${code}...`)
+            : chalk.green(`✔ Exited cleanly`)
+        } ${chalk.gray("(any key to view menu)")}`
+      );
+    });
+
+    serverProcess.on("exit", code => {
+      // console.log("exit");
+    });
 
     serverProcess.on("message", () => {
       serverProcess.kill();
@@ -54,6 +74,12 @@ module.exports.runCLI = async function runCLI() {
         serverProcess.send({});
       } else {
         startServerProcess();
+        ui.updateBottomBar(
+          `${chalk.green("✈ Running...")} ${chalk.gray(
+            "(any key to view menu)"
+          )}`
+        );
+        stdin.resume();
       }
     }
   });
@@ -61,6 +87,85 @@ module.exports.runCLI = async function runCLI() {
   try {
     await compilationPromise;
   } catch (error) {}
+
+  ui.updateBottomBar(
+    `${chalk.green("✈ Running...")} ${chalk.gray("(any key to view menu)")}`
+  );
+
+  // without this, we would only get streams once enter is pressed
+  stdin.setRawMode(true);
+
+  // resume stdin in the parent process (node app won't quit all by itself
+  // unless an error or process.exit() happens)
+  stdin.resume();
+
+  // i don't want binary, do you?
+  stdin.setEncoding("utf8");
+
+  const prompt = inquirer.createPromptModule();
+
+  const onKeyPress = key => {
+    // ctrl-c ( end of text )
+    if (key === "\u0003") {
+      process.exit();
+    }
+
+    serverLogPaused = true;
+
+    ui.updateBottomBar("");
+    stdin.removeListener("data", onKeyPress);
+    prompt([
+      {
+        type: "list",
+        name: "action",
+        message: "What now?",
+        choices: ["Restart", "Show stdout"]
+      }
+    ]).then(({ action }) => {
+      if (action === "Show stdout") {
+        serverLogPaused = false;
+        ui.updateBottomBar(
+          `${chalk.green("✈ Running...")} ${chalk.gray(
+            "(any key to view menu)"
+          )}`
+        );
+        stdin.resume();
+        stdin.on("data", onKeyPress);
+      } else if (action === "Restart") {
+        serverLogPaused = false;
+        if (serverProcess) {
+          spinner.text = "Killing process...";
+          spinner.start();
+
+          serverProcess.removeAllListeners("exit");
+          serverProcess.on("exit", () => {
+            spinner.succeed("Process killed");
+            startServerProcess();
+            ui.updateBottomBar(
+              `${chalk.green("✈ Running...")} ${chalk.gray(
+                "(any key to view menu)"
+              )}`
+            );
+            stdin.resume();
+            stdin.on("data", onKeyPress);
+          });
+          serverProcess.kill();
+        } else {
+          startServerProcess();
+          ui.updateBottomBar(
+            `${chalk.green("✈ Running...")} ${chalk.gray(
+              "(any key to view menu)"
+            )}`
+          );
+          stdin.resume();
+          stdin.on("data", onKeyPress);
+        }
+      }
+    });
+  };
+
+  // on any data into stdin
+  stdin.on("data", onKeyPress);
 
   function createCompiler(config) {
     let compiler;
@@ -119,9 +224,8 @@ module.exports.runCLI = async function runCLI() {
 
   function waitForCompilation(compiler) {
     return new Promise((resolve, reject) => {
-      compiler.hooks.done.tap(
-        "promise",
-        stats => (stats.hasErrors() ? reject(stats) : resolve(stats))
+      compiler.hooks.done.tap("promise", stats =>
+        stats.hasErrors() ? reject(stats) : resolve(stats)
       );
     });
   }

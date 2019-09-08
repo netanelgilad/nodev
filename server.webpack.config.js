@@ -90,7 +90,7 @@ module.exports.createServerWebpackConfig = function createServerWebpackConfig({
     },
 
     resolveLoader: {
-      modules: [path.join(__dirname, "../node_modules"), "node_modules"]
+      modules: [path.join(__dirname, "./node_modules"), "node_modules"]
     },
 
     externals: [nodeExternals()],
@@ -105,7 +105,9 @@ module.exports.createServerWebpackConfig = function createServerWebpackConfig({
       // https://webpack.js.org/plugins/banner-plugin/
       new webpack.BannerPlugin({
         // https://github.com/evanw/node-source-map-support
-        banner: 'require("source-map-support").install();',
+        banner: `require("${require.resolve(
+          "source-map-support"
+        )}").install();`,
         raw: true,
         entryOnly: false
       }),
